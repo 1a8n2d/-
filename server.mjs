@@ -8,6 +8,9 @@ const events = [
 const metrics = { healthScore: 92.4, renderEfficiency: 18.6, activeProjects: 24, kpisTracked: 42, costPerRender: 0.84 }
 const json = (res, status, body) => { res.writeHead(status, { 'content-type':'application/json', 'access-control-allow-origin':'*' }); res.end(JSON.stringify(body)) }
 const server = createServer((req,res) => {
+  if (req.method === 'POST' && req.url === '/api/generate') return json(res,202,{ id:'megapolis-awake', status:'queued', provider:process.env.VIDEO_PROVIDER || 'SVI', frames: [
+    { id:'scene-01', title:'Пробуждение', duration:4 }, { id:'scene-02', title:'Город дышит', duration:4 }, { id:'scene-03', title:'Он видит тебя', duration:4 }
+  ] })
   if (req.method === 'GET' && req.url === '/api/v1/metrics') return json(res,200,metrics)
   if (req.method === 'GET' && req.url === '/api/v1/events') return json(res,200,{ events })
   if (req.method === 'GET' && req.url === '/api/v1/knowledge-graph') return json(res,200,{ nodes:248, edges:611, stores:['openai-vector-store','files-api'] })
