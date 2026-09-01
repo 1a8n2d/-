@@ -1,8 +1,8 @@
 {
-  "name": "bes-cineforge",
+  "name": "botan-comic-clip-factory",
   "version": "0.1.0",
   "type": "module",
-  "scripts": { "dev": "vite", "api": "node server.mjs", "build": "vue-tsc --noEmit && vite build", "preview": "vite preview" },
+  "scripts": { "dev": "vite", "api": "node server.mjs", "build": "vite build", "preview": "vite preview" },
   "dependencies": { "@vitejs/plugin-vue": "latest", "vite": "latest", "vue": "latest" },
-  "devDependencies": { "typescript": "latest", "vue-tsc": "latest" }
+  "devDependencies": { "typescript": "^5.7.3", "vue-tsc": "^2.2.0" }
 }

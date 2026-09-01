@@ -1,36 +1,92 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 
-type Clip = { id: number; title: string; type: 'video' | 'fx' | 'text'; start: number; length: number; color: string }
-const clips = ref<Clip[]>([
-  { id: 1, title: 'CITY_PLATE_01', type: 'video', start: 1, length: 28, color: '#7d70ff' },
-  { id: 2, title: 'NEON REFLECTIONS', type: 'fx', start: 12, length: 18, color: '#f65cae' },
-  { id: 3, title: 'BES / CINEFORGE', type: 'text', start: 32, length: 23, color: '#69d8ff' },
-  { id: 4, title: 'TITANIUM GRADE', type: 'video', start: 58, length: 25, color: '#a59bfd' },
+type Shot = { id: number; title: string; prompt: string; start: number; length: number; tone: string }
+const idea = ref('Человек просыпается в живом мегаполисе, где каждое окно наблюдает за ним.')
+const music = ref('medals_test.wav')
+const generating = ref(false)
+const projectReady = ref(true)
+const activeTab = ref<'timeline' | 'script'>('timeline')
+const selected = ref(1)
+const playhead = ref(22)
+const toast = ref('')
+const shots = ref<Shot[]>([
+  { id: 1, title: '01 · ПРОБУЖДЕНИЕ', prompt: 'Wide — bedroom swallowed by neon dawn', start: 0, length: 28, tone: 'violet' },
+  { id: 2, title: '02 · ГОРОД ДЫШИТ', prompt: 'Low angle — living street, blinking windows', start: 24, length: 31, tone: 'orange' },
+  { id: 3, title: '03 · ОН ВИДИТ ТЕБЯ', prompt: 'Close up — reflections move independently', start: 52, length: 25, tone: 'cyan' },
 ])
-const selected = ref(1), playing = ref(false), playhead = ref(24), search = ref('')
-const history = ref<Clip[][]>([]), future = ref<Clip[][]>([])
-const activeTab = ref('Inspector'), toast = ref('')
-const filtered = computed(() => effects.filter(e => e.toLowerCase().includes(search.value.toLowerCase())))
-const selectedClip = computed(() => clips.value.find(c => c.id === selected.value))
-const effects = ['Preset Intelligence', 'Cost Intelligence', 'QA Engine', 'KPI Engine · 42 metrics', 'Batch analysis', 'Model recovery']
-function snapshot() { history.value.push(structuredClone(clips.value)); future.value = [] }
-function undo() { const previous = history.value.pop(); if (previous) { future.value.push(structuredClone(clips.value)); clips.value = previous } }
-function redo() { const next = future.value.pop(); if (next) { history.value.push(structuredClone(clips.value)); clips.value = next } }
-function addEffect(name: string) { snapshot(); clips.value.push({ id: Date.now(), title: name.toUpperCase(), type: 'fx', start: 40, length: 15, color: '#f65cae' }); toast.value = `${name} added to timeline`; setTimeout(() => toast.value = '', 2000) }
-function drop(event: DragEvent) { const id = Number(event.dataTransfer?.getData('clip')); if (!id) return; const clip = clips.value.find(c => c.id === id); if (!clip) return; snapshot(); const box = (event.currentTarget as HTMLElement).getBoundingClientRect(); clip.start = Math.max(0, Math.round((event.clientX - box.left) / box.width * 90)); }
-function exportProject() { const data = JSON.stringify({ name: 'Analytics Command Center', fps: 24, clips: clips.value }, null, 2); const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([data], { type: 'application/json' })); a.download = 'cineforge-project.json'; a.click(); toast.value = 'Project JSON exported'; setTimeout(() => toast.value = '', 2000) }
+const selectedShot = computed(() => shots.value.find(s => s.id === selected.value) ?? shots.value[0])
+function flash(message: string) { toast.value = message; window.setTimeout(() => toast.value = '', 2500) }
+function generate() {
+  generating.value = true
+  window.setTimeout(() => { generating.value = false; projectReady.value = true; flash('Клип собран: 3 motion-сегмента готовы') }, 1050)
+}
+function drop(event: DragEvent) {
+  const id = Number(event.dataTransfer?.getData('shot'))
+  const shot = shots.value.find(s => s.id === id)
+  if (!shot) return
+  const box = (event.currentTarget as HTMLElement).getBoundingClientRect()
+  shot.start = Math.max(0, Math.min(82, Math.round((event.clientX - box.left) / box.width * 88)))
+  flash('Сцена перемещена на таймлайне')
+}
+function exportProject() { flash('Проект Botan сохранён в projects/megapolis-awake') }
 </script>
 
 <template>
   <main>
-    <header class="topbar"><div class="brand"><span class="brand-mark">B</span><b>BES</b><span>ANALYTICS OS</span></div><div class="project-name">Analytics Command Center <span>⌄</span></div><div class="header-actions"><button class="ghost" @click="undo" :disabled="!history.length">↶</button><button class="ghost" @click="redo" :disabled="!future.length">↷</button><button class="outline" @click="exportProject">Export report</button><button class="render">Live <b>SYNC</b> ↗</button></div></header>
+    <header class="topbar">
+      <a class="brand" href="#"><span class="seed">✦</span><span>BOTAN</span><small>COMIC CLIP FACTORY</small></a>
+      <div class="crumb">PROJECTS <b>/</b> МЕГАПОЛИС ПРОСЫПАЕТСЯ <i>⌄</i></div>
+      <div class="header-actions"><button class="icon">↶</button><button class="icon">↷</button><button class="export" @click="exportProject">Экспорт</button><button class="render" @click="generate">{{ generating ? 'СБОРКА...' : 'RENDER CLIP ↗' }}</button></div>
+    </header>
+
     <section class="workspace">
-      <aside class="library"><div class="section-heading"><span>ANALYTICS OS</span><button>＋</button></div><div class="search">⌕ <input v-model="search" placeholder="Search knowledge" /></div><div class="nav"><div class="nav-active">✦ &nbsp; Intelligence <small>Responses API · MCP</small></div><div>▣ &nbsp; Event stream</div><div>◌ &nbsp; Workflow DNA <em>14</em></div><div>✧ &nbsp; Knowledge graph <em>248</em></div></div><div class="asset-title">ACTIVE INTELLIGENCE</div><button v-for="effect in filtered" :key="effect" class="asset" @click="addEffect(effect)"><i></i><span>{{ effect }}<small>Event-sourced signal</small></span><b>＋</b></button><div class="automation"><div class="spark">✦</div><b>OpenAI orchestrator</b><p>Responses API coordinates memory, QA, and workflow intelligence.</p><button>Open control plane →</button></div></aside>
-      <section class="center"><div class="viewer"><div class="viewer-top"><span>REAL-TIME PERFORMANCE</span><span>WEBSOCKET CONNECTED · 1.2s</span></div><div class="frame"><div class="glow"></div><div class="city"></div><div class="type"><small>INTELLIGENCE STATUS</small><strong>92.4%<br><em>HEALTH SCORE</em></strong><i></i></div><div class="safe"></div><div class="metric-float"><b>+18.6%</b><span>render efficiency</span></div><div class="timecode">EVENTS · 24,281</div></div><div class="transport"><button @click="playing = !playing">{{ playing ? '❚❚' : '▶' }}</button><span>◁</span><div class="scrub"><i :style="{width: `${playhead}%`}"></i></div><span>▷</span><b>1:00:00</b></div></div>
-        <div class="timeline"><div class="timeline-head"><div><b>Live event timeline</b><span>24 fps</span></div><div><button @click="undo">Undo</button><button @click="redo">Redo</button><button>⌘ Snap</button></div></div><div class="ruler"><span v-for="n in 10" :key="n">00:{{ String(n * 10).padStart(2,'0') }}</span></div><div class="tracks" @dragover.prevent @drop="drop"><div class="track-label"><span>▸ V1</span><small>CineForge</small></div><div class="track-lane"><div v-for="clip in clips.filter(c=>c.type==='video')" :key="clip.id" draggable="true" @dragstart="e => e.dataTransfer?.setData('clip', String(clip.id))" @click="selected = clip.id" class="clip" :class="{selected: selected===clip.id}" :style="{left:clip.start+'%',width:clip.length+'%',background:clip.color}">{{clip.title}}</div></div><div class="track-label"><span>✦ FX</span><small>Intelligence</small></div><div class="track-lane"><div v-for="clip in clips.filter(c=>c.type==='fx')" :key="clip.id" draggable="true" @dragstart="e => e.dataTransfer?.setData('clip', String(clip.id))" @click="selected = clip.id" class="clip fx" :class="{selected: selected===clip.id}" :style="{left:clip.start+'%',width:clip.length+'%',background:clip.color}">{{clip.title}}</div></div><div class="track-label"><span>T &nbsp;V2</span><small>Chatium</small></div><div class="track-lane"><div v-for="clip in clips.filter(c=>c.type==='text')" :key="clip.id" draggable="true" @dragstart="e => e.dataTransfer?.setData('clip', String(clip.id))" @click="selected = clip.id" class="clip text" :class="{selected: selected===clip.id}" :style="{left:clip.start+'%',width:clip.length+'%',background:clip.color}">{{clip.title}}</div></div><div class="playhead" :style="{left:playhead+'%'}"></div></div></div>
+      <aside class="sidebar">
+        <div class="side-heading"><span>AI DIRECTOR</span><button>＋</button></div>
+        <button class="new-project">＋ <span>Новый comic clip</span><small>⌘ K</small></button>
+        <nav><button class="active">✦ <span>Магия</span><small>01</small></button><button>▦ <span>Storyboard</span></button><button>◒ <span>Character bible</span></button><button>◌ <span>Style memory</span></button></nav>
+        <div class="side-heading library-label"><span>БИБЛИОТЕКА</span><button>⌕</button></div>
+        <div class="asset"><div class="asset-icon violet">⌁</div><div><b>Night city bible</b><small>Style · 12 refs</small></div><em>•••</em></div>
+        <div class="asset"><div class="asset-icon coral">◉</div><div><b>Михаил / protagonist</b><small>Character · locked</small></div><em>•••</em></div>
+        <div class="asset"><div class="asset-icon green">♫</div><div><b>{{ music }}</b><small>Music · 02:18</small></div><em>•••</em></div>
+        <div class="provider-card"><div><span class="live-dot"></span> VIDEO PROVIDER</div><b>SVI Infinity <small>v2.0</small></b><p>Keyframe → motion, с памятью продолжения сцены.</p><button>Настроить провайдер →</button></div>
+      </aside>
+
+      <section class="center">
+        <section class="prompt-panel">
+          <div class="eyebrow"><span>✦ MAGIC DIRECTOR</span><span>CONTINUITY ON</span></div>
+          <textarea v-model="idea" aria-label="Идея клипа"></textarea>
+          <div class="prompt-footer"><button class="chip" @click="music = music === 'medals_test.wav' ? 'new_track.wav' : 'medals_test.wav'">♫ {{ music }}</button><button class="chip">▧ 9:16</button><button class="magic" @click="generate"><span>✦</span> {{ generating ? 'БОТАН ДУМАЕТ...' : 'MAKE MY COMIC CLIP' }}</button></div>
+        </section>
+        <section class="viewer">
+          <div class="viewer-head"><span>PREVIEW · <b>SCENE 02</b></span><span>1080 × 1920 <i>⋮</i></span></div>
+          <div class="artboard">
+            <div class="grain"></div><div class="moon"></div><div class="tower tower-a"></div><div class="tower tower-b"></div><div class="tower tower-c"></div><div class="windows"></div><div class="road"></div><div class="person"></div>
+            <div class="frame-copy"><span>02 / 03</span><strong>ГОРОД<br>ДЫШИТ</strong><i></i><small>МЕГАПОЛИС · 04:17 AM</small></div>
+            <div class="motion-pill"><span>✦</span><div><b>MOTION SEGMENT</b><small>SVI · 4.0 sec · ready</small></div></div>
+            <div class="safe-area"></div><div class="timecode">00:00:08:12</div>
+          </div>
+          <div class="transport"><button @click="playhead = playhead > 80 ? 0 : playhead + 8">▶</button><button>◀</button><div class="scrubber" @click="playhead = 50"><i :style="{ width: playhead + '%' }"></i></div><button>▶</button><b>00:08 / 00:18</b><button class="sound">⌁</button></div>
+        </section>
+
+        <section class="timeline-panel">
+          <div class="timeline-head"><div><button :class="{ on: activeTab === 'timeline' }" @click="activeTab = 'timeline'">TIMELINE</button><button :class="{ on: activeTab === 'script' }" @click="activeTab = 'script'">SCRIPT</button></div><div><span>24 FPS</span><button>⌘ SNAP</button><button>＋</button></div></div>
+          <template v-if="activeTab === 'timeline'"><div class="ruler"><span v-for="n in 7" :key="n">00:0{{ n * 3 }}</span></div><div class="tracks" @dragover.prevent @drop="drop"><div class="track-label"><b>V1</b><small>KEYFRAMES</small></div><div class="track-lane"><div v-for="shot in shots" :key="shot.id" class="clip" :class="[shot.tone, { selected: selected === shot.id }]" :style="{ left: shot.start + '%', width: shot.length + '%' }" draggable="true" @dragstart="event => event.dataTransfer?.setData('shot', String(shot.id))" @click="selected = shot.id"><span>▣</span> {{ shot.title }}</div></div><div class="track-label"><b>✦</b><small>MOTION</small></div><div class="track-lane motion-track"><div v-for="shot in shots" :key="shot.id" class="motion-clip" :class="shot.tone" :style="{ left: shot.start + '%', width: shot.length + '%' }">SVI · {{ shot.length / 7 }}s</div></div><div class="track-label"><b>♫</b><small>AUDIO</small></div><div class="track-lane audio-track"><div class="audio-wave"></div><div class="audio-name">♫ MEDALS TEST · 124 BPM</div></div><div class="playline" :style="{ left: `calc(116px + ${playhead}%)` }"></div></div></template>
+          <div v-else class="script-view"><b>SCENE 02 — ГОРОД ДЫШИТ</b><p>Улицы плавятся в мокром свете. Окна мигают, словно веки, и следят за героем.</p></div>
+        </section>
       </section>
-      <aside class="inspector"><div class="tabs"><button v-for="t in ['Inspector','Workflow']" :class="{on:activeTab===t}" @click="activeTab=t">{{t}}</button></div><template v-if="activeTab==='Inspector'"><div class="ins-title"><span>SELECTED SIGNAL</span><b>•••</b></div><div class="clip-card"><div class="thumb"></div><div><b>{{ selectedClip?.title }}</b><small>{{ selectedClip?.type === 'fx' ? 'ComfyUI · Generated' : 'Project event' }}</small></div></div><label>Event source <select><option>CineForge / renderer</option><option>Chatium / audience</option><option>Batch API / archive</option></select></label><label>Confidence <span>100%</span><input type="range" value="100"></label><label>Workflow DNA</label><div class="numbers"><button>X&nbsp; 0.00</button><button>Y&nbsp; 0.00</button><button>Scale&nbsp; 100</button><button>Rotation&nbsp; 0°</button></div><div class="ai-panel"><span>✦ SELF-HEALING ANALYTICS</span><p>Detects model changes, validates metric drift, and repairs affected presets.</p><button>Run QA repair →</button></div></template><template v-else><div class="ins-title"><span>WORKFLOW DNA</span></div><div class="node purple">Events <b>append-only project stream</b></div><div class="wire"></div><div class="node pink">Memory <b>Vector Store retrieval</b></div><div class="wire"></div><div class="node blue">QA Engine <b>preset improvement loop</b></div><button class="run">Run intelligence workflow →</button></template></aside>
-    </section><div v-if="toast" class="toast">✓ {{toast}}</div>
+
+      <aside class="inspector">
+        <div class="inspector-tabs"><button class="on">ИНСПЕКТОР</button><button>РАБОЧИЙ ПРОЦЕСС</button></div>
+        <div class="section-title">ВЫБРАННАЯ СЦЕНА <b>•••</b></div>
+        <div class="scene-card"><div class="scene-thumb"></div><div><b>{{ selectedShot.title }}</b><small>KEYFRAME + MOTION</small></div></div>
+        <label>Prompt <textarea :value="selectedShot.prompt"></textarea></label>
+        <label>Длительность <span>4.0 sec</span><input type="range" min="2" max="8" value="4" /></label>
+        <label>Переход <select><option>Soft dissolve</option><option>Match cut</option><option>Hard cut</option></select></label>
+        <div class="continuity"><span>✦ CONTINUITY ENGINE</span><p>Герой, свет и направление движения удерживаются между сценами.</p><button>Показать memory →</button></div>
+        <div class="generation"><div><span class="live-dot"></span> GENERATION QUEUE</div><b>3 / 3 сегментов</b><small>Все keyframes готовы к рендеру</small><div class="progress"><i></i></div></div>
+      </aside>
+    </section>
+    <div v-if="toast" class="toast">✓ {{ toast }}</div>
   </main>
 </template>
