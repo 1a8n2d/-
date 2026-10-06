@@ -3,6 +3,6 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": { "dev": "vite", "api": "node server.mjs", "build": "vite build", "preview": "vite preview" },
-  "dependencies": { "@vitejs/plugin-vue": "latest", "three": "r128", "vite": "latest", "vue": "latest" },
-  "devDependencies": { "@types/three": "^r128", "typescript": "^5.7.3", "vue-tsc": "^2.2.0" }
+  "dependencies": { "@vitejs/plugin-vue": "latest", "three": "^0.128.0", "vite": "latest", "vue": "latest" },
+  "devDependencies": { "@types/three": "^0.128.0", "typescript": "^5.7.3", "vue-tsc": "^2.2.0" }
 }
