@@ -1,5 +1,5 @@
 import * as THREE from 'three'
-import type { SceneGraph } from '../types/index'
+import type { SceneGraph, SceneObject } from '../types/index'
 
 export interface RendererState {
   isPlaying: boolean
@@ -7,21 +7,40 @@ export interface RendererState {
   duration: number
 }
 
+/**
+ * MotionRenderer: Deterministic Three.js-based scene renderer.
+ *
+ * Guarantees:
+ * - All transforms are derived from `time` parameter, never accumulated
+ * - Timeline ends deterministically (no modulo looping)
+ * - Animation loop is never duplicated
+ * - All WebGL resources and event listeners are fully cleaned up on dispose
+ * - Initial frame renders before playback
+ */
 export class MotionRenderer {
   private scene: THREE.Scene
   private camera: THREE.PerspectiveCamera
   private renderer: THREE.WebGLRenderer
   private sceneGraph: SceneGraph
   private sceneObjects: Map<string, THREE.Object3D> = new Map()
+  private lights: THREE.Light[] = []
   private animationFrameId: number | null = null
   private startTime: number = 0
   private pausedTime: number = 0
   private isPlaying: boolean = false
   private duration: number = 12 // 12 second default duration
+  private resizeHandler: (() => void) | null = null
 
   constructor(canvas: HTMLCanvasElement, sceneGraph: SceneGraph, duration: number = 12) {
     this.sceneGraph = sceneGraph
-    this.duration = duration
+    this.duration = Math.max(0.1, duration)
+
+    // Validate canvas dimensions
+    const width = canvas.clientWidth
+    const height = canvas.clientHeight
+    if (width <= 0 || height <= 0) {
+      console.warn('[MotionRenderer] Canvas has invalid dimensions:', width, 'x', height)
+    }
 
     // Initialize Three.js scene
     this.scene = new THREE.Scene()
@@ -29,16 +48,20 @@ export class MotionRenderer {
     this.scene.fog = new THREE.Fog(0x0a0a0a, 20, 100)
 
     // Initialize camera
-    const width = canvas.clientWidth
-    const height = canvas.clientHeight
-    this.camera = new THREE.PerspectiveCamera(75, width / height, 0.1, 1000)
+    this.camera = new THREE.PerspectiveCamera(
+      75,
+      width > 0 && height > 0 ? width / height : 1,
+      0.1,
+      1000
+    )
     this.camera.position.set(0, 0, 8)
     this.camera.lookAt(0, 0, 0)
 
-    // Initialize renderer
+    // Initialize renderer with clamped pixel ratio
+    const pixelRatio = Math.min(window.devicePixelRatio, 2)
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false })
     this.renderer.setSize(width, height)
-    this.renderer.setPixelRatio(window.devicePixelRatio)
+    this.renderer.setPixelRatio(pixelRatio)
     this.renderer.shadowMap.enabled = true
 
     // Setup lighting
@@ -47,14 +70,19 @@ export class MotionRenderer {
     // Build scene from graph
     this.buildSceneFromGraph(sceneGraph)
 
-    // Handle window resize
-    window.addEventListener('resize', () => this.onWindowResize())
+    // Register resize handler (save reference for later removal)
+    this.resizeHandler = () => this.onWindowResize()
+    window.addEventListener('resize', this.resizeHandler)
+
+    // Render initial frame
+    this.renderer.render(this.scene, this.camera)
   }
 
   private setupLighting(): void {
     // Ambient light for base illumination
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.4)
     this.scene.add(ambientLight)
+    this.lights.push(ambientLight)
 
     // Directional light for shadows and depth
     const dirLight = new THREE.DirectionalLight(0xffffff, 0.8)
@@ -64,11 +92,13 @@ export class MotionRenderer {
     dirLight.shadow.mapSize.height = 2048
     dirLight.shadow.camera.far = 50
     this.scene.add(dirLight)
+    this.lights.push(dirLight)
 
     // Point light for glow effect
     const pointLight = new THREE.PointLight(0x60a5fa, 0.5)
     pointLight.position.set(0, 2, 3)
     this.scene.add(pointLight)
+    this.lights.push(pointLight)
   }
 
   private buildSceneFromGraph(graph: SceneGraph): void {
@@ -88,7 +118,7 @@ export class MotionRenderer {
     }
   }
 
-  private createObjectFromData(objData: any): THREE.Object3D | null {
+  private createObjectFromData(objData: SceneObject): THREE.Object3D | null {
     let object: THREE.Object3D | null = null
 
     if (objData.type === 'mesh' && objData.geometry) {
@@ -107,7 +137,7 @@ export class MotionRenderer {
     return object
   }
 
-  private createGeometry(objData: any): THREE.Object3D {
+  private createGeometry(objData: SceneObject): THREE.Object3D {
     let geometry: THREE.BufferGeometry
 
     switch (objData.geometry?.kind) {
@@ -142,7 +172,7 @@ export class MotionRenderer {
     return mesh
   }
 
-  private createGrid(objData: any): THREE.Object3D {
+  private createGrid(objData: SceneObject): THREE.Object3D {
     const gridSize = objData.geometry?.size?.[0] ?? 10
     const gridDivisions = objData.geometry?.density ?? 10
 
@@ -155,6 +185,8 @@ export class MotionRenderer {
   private onWindowResize(): void {
     const width = this.renderer.domElement.clientWidth
     const height = this.renderer.domElement.clientHeight
+
+    if (width <= 0 || height <= 0) return
 
     this.camera.aspect = width / height
     this.camera.updateProjectionMatrix()
@@ -181,11 +213,13 @@ export class MotionRenderer {
     this.pausedTime = 0
     this.pause()
     this.updateScene(0)
+    this.renderer.render(this.scene, this.camera)
   }
 
   public seek(time: number): void {
-    this.pausedTime = Math.max(0, Math.min(time, this.duration))
-    this.updateScene(this.pausedTime)
+    const clampedTime = Math.max(0, Math.min(time, this.duration))
+    this.pausedTime = clampedTime
+    this.updateScene(clampedTime)
     if (!this.isPlaying) {
       this.renderer.render(this.scene, this.camera)
     }
@@ -193,7 +227,8 @@ export class MotionRenderer {
 
   public getCurrentTime(): number {
     if (this.isPlaying) {
-      return ((performance.now() - this.startTime) / 1000) % this.duration
+      const elapsed = (performance.now() - this.startTime) / 1000
+      return Math.min(elapsed, this.duration)
     }
     return this.pausedTime
   }
@@ -214,31 +249,45 @@ export class MotionRenderer {
     if (!this.isPlaying) return
 
     const currentTime = this.getCurrentTime()
-    this.pausedTime = currentTime
 
+    // Stop animation at end of timeline
+    if (currentTime >= this.duration) {
+      this.pausedTime = this.duration
+      this.isPlaying = false
+      this.updateScene(this.duration)
+      this.renderer.render(this.scene, this.camera)
+      return
+    }
+
+    this.pausedTime = currentTime
     this.updateScene(currentTime)
     this.renderer.render(this.scene, this.camera)
 
     this.animationFrameId = requestAnimationFrame(this.animate)
   }
 
+  /**
+   * Update scene state based on current time.
+   * All transforms MUST be derived from `time` parameter, never accumulated.
+   */
   private updateScene(time: number): void {
-    // Rotate wireframe cube continuously
+    // Rotate wireframe cube: derive rotation from time (deterministic)
     const cube = this.sceneObjects.get('wireframe-cube')
     if (cube) {
-      cube.rotation.x += 0.005
-      cube.rotation.y += 0.008
+      cube.rotation.x = 0.5 + Math.sin(time * 0.5) * 0.3
+      cube.rotation.y = 0.8 + time * 0.3
+      cube.rotation.z = 0.2 + Math.cos(time * 0.4) * 0.2
     }
 
-    // Gentle camera bob
+    // Gentle camera bob: derived from time
     const bobAmount = Math.sin(time * 0.5) * 0.1
     this.camera.position.z = 8 + bobAmount
 
-    // Pulsing grid opacity
+    // Pulsing grid: GridHelper doesn't support material opacity, so we adjust via position
     const grid = this.sceneObjects.get('grid-base')
-    if (grid && grid instanceof THREE.GridHelper) {
-      const opacity = 0.3 + Math.sin(time * 2) * 0.2
-      grid.material.opacity = opacity
+    if (grid) {
+      const scale = 0.8 + Math.sin(time * 2) * 0.2
+      grid.scale.y = scale
     }
   }
 
@@ -256,11 +305,24 @@ export class MotionRenderer {
         }
       }
     })
+    this.sceneObjects.clear()
+
+    // Dispose lights
+    this.lights.forEach((light) => {
+      if ('dispose' in light && typeof light.dispose === 'function') {
+        light.dispose()
+      }
+      this.scene.remove(light)
+    })
+    this.lights = []
 
     // Dispose renderer
     this.renderer.dispose()
 
-    // Remove event listeners
-    window.removeEventListener('resize', () => this.onWindowResize())
+    // Remove event listener with exact handler reference
+    if (this.resizeHandler) {
+      window.removeEventListener('resize', this.resizeHandler)
+      this.resizeHandler = null
+    }
   }
 }
